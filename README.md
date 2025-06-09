@@ -1,4 +1,4 @@
-# MotorPH Employee App – Milestone 1 (Group 8)
+# MotorPH Employee App – Milestone 2 (Group 8)
 
 This is a Java-based payroll and attendance management system for MotorPH employees. It includes:
 - A login system for employees
