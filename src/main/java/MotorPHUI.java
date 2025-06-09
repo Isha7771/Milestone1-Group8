@@ -1,379 +1,525 @@
-import javax.swing.*;
+import javax.swing.JButton;
+import javax.swing.ListSelectionModel;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JPasswordField;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
+import javax.swing.event.ListSelectionListener;
 import javax.swing.table.DefaultTableModel;
-import java.awt.BorderLayout;
+
+import java.awt.CardLayout;
 import java.awt.GridBagLayout;
 import java.awt.GridBagConstraints;
 import java.awt.Insets;
-import java.awt.event.*;
-import java.io.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+
 import java.text.NumberFormat;
 import java.time.LocalTime;
-import java.time.Month;
-import java.util.Locale;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 public class MotorPHUI extends JFrame {
-    private JTextField txtUsername;
-    private JPasswordField txtPassword;
-    private JTextField txtTimeIn, txtTimeOut;
-    private JLabel lblNameVal, lblPosVal, lblSalaryVal, lblSSSVal, lblPhilHealthVal,
-                   lblPagIbigVal, lblTaxVal, lblOtherVal, lblTotalVal, lblNetVal;
+    private static final String CSV_FILE = "employees.csv";
 
-    private JTable employeesTable;
-    private DefaultTableModel tableModel;
-    private JPanel loginPanel, employeesPanel, payrollPanel, attendancePanel;
-    private JTabbedPane tabbedPane;
-    private List<Employee> employees;
-    private final String CSV_FILE = "employees.csv";
-    private Employee currentUser;
+    // Card identifiers
+    private static final String CARD_WELCOME    = "welcome";
+    private static final String CARD_LOGIN      = "login";
+    private static final String CARD_ADD        = "add";
+    private static final String CARD_MANAGE     = "manage";
+    private static final String CARD_PAYROLL    = "payroll";
+    private static final String CARD_ATTENDANCE = "attendance";
+
+    private CardLayout cardLayout;
+    private JPanel     cards;
+
+    // --- Login fields ---
+    private JTextField    loginUser;
+    private JPasswordField loginPass;
+
+    // --- Add fields ---
+    private JTextField    addId, addLast, addFirst, addPosition, addSalary, addType;
+    private JTextField    addSSS, addPH, addTIN, addPag, addUser;
+    private JPasswordField addPass;
+
+    // --- Manage fields ---
+    private DefaultTableModel manageModel;
+    private JTable             manageTable;
+    private JTextField         mLast, mFirst, mPosition, mSalary, mType;
+    private JTextField         mSSS, mPH, mTIN, mPag, mUser;
+    private JButton            btnUpdate, btnDelete;
+
+    // --- Payroll labels ---
+    private JLabel lblName, lblPositionVal, lblSalaryVal;
+    private JLabel lblSSS, lblPHVal, lblPagVal, lblTax, lblOther, lblDeduct, lblNet;
+
+    // --- Attendance fields ---
+    private JTextField timeInField, timeOutField;
+
+    private List<Employee> employees = new ArrayList<>();
+    private Employee       currentUser;
 
     public MotorPHUI() {
-        setTitle("MotorPH Employee App");
-        setSize(700, 500);
+        super("MotorPH Employee App");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setSize(800, 600);
         setLocationRelativeTo(null);
 
-        // load existing records
-        employees = readEmployeesFromCSV(CSV_FILE);
+        employees = loadEmployees();
 
-        tabbedPane = new JTabbedPane();
-        createEmployeesTab();
-        createLoginTab();
-        createPayrollTab();
-        createAttendanceTab();
+        cardLayout = new CardLayout();
+        cards      = new JPanel(cardLayout);
+        cards.add(makeWelcomePanel(),    CARD_WELCOME);
+        cards.add(makeLoginPanel(),      CARD_LOGIN);
+        cards.add(makeAddPanel(),        CARD_ADD);
+        cards.add(makeManagePanel(),     CARD_MANAGE);
+        cards.add(makePayrollPanel(),    CARD_PAYROLL);
+        cards.add(makeAttendancePanel(), CARD_ATTENDANCE);
 
-        // lock everything except login until we authenticate
-        tabbedPane.setEnabledAt(0, false);
-        tabbedPane.setEnabledAt(2, false);
-        tabbedPane.setEnabledAt(3, false);
-
-        add(tabbedPane);
+        add(cards);
+        cardLayout.show(cards, CARD_WELCOME);
         setVisible(true);
     }
 
-    private void createEmployeesTab() {
-        employeesPanel = new JPanel(new BorderLayout());
-        String[] cols = {"ID","Last Name","First Name","SSS","PhilHealth","TIN","Pag-IBIG"};
-        tableModel = new DefaultTableModel(cols, 0);
+    private JPanel makeWelcomePanel() {
+        JPanel p = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(10,10,10,10);
+        gbc.gridy  = 0;
+        p.add(new JLabel("Welcome to MotorPH Employee System"), gbc);
+
+        String[] labels = { "Login", "Add Employee", "Manage Employees" };
+        String[] cardsArr  = { CARD_LOGIN, CARD_ADD, CARD_MANAGE };
+        for (int i = 0; i < labels.length; i++) {
+            gbc.gridy = i + 1;
+            JButton b = new JButton(labels[i]);
+            final String dest = cardsArr[i];
+            b.addActionListener(e -> cardLayout.show(cards, dest));
+            p.add(b, gbc);
+        }
+        return p;
+    }
+
+    private JPanel makeLoginPanel() {
+        JPanel p = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5,5,5,5);
+
+        gbc.gridx=0; gbc.gridy=0; p.add(new JLabel("Username:"), gbc);
+        gbc.gridx=1; loginUser = new JTextField(15); p.add(loginUser, gbc);
+
+        gbc.gridx=0; gbc.gridy=1; p.add(new JLabel("Password:"), gbc);
+        gbc.gridx=1; loginPass = new JPasswordField(15); p.add(loginPass, gbc);
+
+        gbc.gridx=0; gbc.gridy=2; gbc.gridwidth=2;
+        JButton loginBtn = new JButton("Login");
+        loginBtn.addActionListener(e -> handleLogin());
+        p.add(loginBtn, gbc);
+
+        gbc.gridy=3;
+        JButton back = new JButton("Back");
+        back.addActionListener(e -> cardLayout.show(cards, CARD_WELCOME));
+        p.add(back, gbc);
+
+        return p;
+    }
+
+    private void handleLogin() {
+        String u = loginUser.getText().trim();
+        String p = new String(loginPass.getPassword()).trim();
         for (Employee e : employees) {
-            tableModel.addRow(new Object[]{
-                e.getId(), e.getLastName(), e.getFirstName(),
-                e.getSssNumber(), e.getPhilHealthNumber(),
-                e.getTin(), e.getPagIbigNumber()
-            });
+            if (e.getLogin().getUsername().equals(u) &&
+                e.getLogin().authenticate(p)) {
+                currentUser = e;
+                populatePayroll(e);
+                cardLayout.show(cards, CARD_PAYROLL);
+                return;
+            }
         }
-        employeesTable = new JTable(tableModel);
-        employeesPanel.add(new JScrollPane(employeesTable), BorderLayout.CENTER);
-
-        JPanel btnPanel = new JPanel();
-        JButton btnView = new JButton("View Employee");
-        JButton btnNew  = new JButton("New Employee");
-        btnPanel.add(btnView);
-        btnPanel.add(btnNew);
-        employeesPanel.add(btnPanel, BorderLayout.SOUTH);
-
-        btnView.addActionListener(e -> openEmployeeDetail());
-        btnNew .addActionListener(e -> openNewEmployeeForm());
-
-        tabbedPane.addTab("Employees", employeesPanel);
+        JOptionPane.showMessageDialog(this,
+            "Invalid credentials", "Login Failed",
+            JOptionPane.ERROR_MESSAGE);
     }
 
-    private void openEmployeeDetail() {
-        int row = employeesTable.getSelectedRow();
-        if (row < 0) {
-            JOptionPane.showMessageDialog(this, "Select an employee first.");
-            return;
-        }
-        Employee emp = employees.get(row);
-
-        JDialog dlg = new JDialog(this, "Employee Details & Payroll", true);
-        dlg.setSize(400,400);
-        dlg.setLayout(new GridBagLayout());
+    private JPanel makeAddPanel() {
+        JPanel p = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(5,5,5,5);
-        gbc.anchor = GridBagConstraints.WEST;
-
-        gbc.gridx=0; gbc.gridy=0; dlg.add(new JLabel("Name: " + emp.getName()), gbc);
-        gbc.gridy++;      dlg.add(new JLabel("Position: " + emp.getPosition()), gbc);
-        gbc.gridy++;      dlg.add(new JLabel("Salary: " + emp.getSalary()), gbc);
-
-        gbc.gridy++;      dlg.add(new JLabel("Select Month:"), gbc);
-        JComboBox<Month> cbMonth = new JComboBox<>(Month.values());
-        gbc.gridx=1;      dlg.add(cbMonth, gbc);
-
-        gbc.gridx=0; gbc.gridy++; gbc.gridwidth=2;
-        JButton btnCompute = new JButton("Compute");
-        dlg.add(btnCompute, gbc);
-
-        gbc.gridy++; gbc.gridwidth=2;
-        JLabel lblResult = new JLabel();
-        dlg.add(lblResult, gbc);
-
-        btnCompute.addActionListener(ae -> {
-            Payroll p = new Payroll(emp);
-            p.computePayroll();
-            NumberFormat cur = NumberFormat.getCurrencyInstance(new Locale("en","PH"));
-            StringBuilder sb = new StringBuilder();
-            sb.append("SSS: ").append(cur.format(p.getSSS())).append("  ");
-            sb.append("PhilHealth: ").append(cur.format(p.getPhilHealth())).append("  ");
-            sb.append("Pag-IBIG: ").append(cur.format(p.getPagIbig())).append("\n");
-            sb.append("Tax: ").append(cur.format(p.getTax())).append("  ");
-            sb.append("Other: ").append(cur.format(p.getOther())).append("  ");
-            sb.append("Net Pay: ").append(cur.format(p.getNetPay()));
-            lblResult.setText("<html>" + sb.toString().replaceAll("\n","<br>") + "</html>");
-        });
-
-        dlg.setLocationRelativeTo(this);
-        dlg.setVisible(true);
-    }
-
-    private void openNewEmployeeForm() {
-        JDialog dlg = new JDialog(this, "New Employee", true);
-        dlg.setSize(350,500);
-        dlg.setLayout(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5,5,5,5);
-        gbc.anchor = GridBagConstraints.WEST;
-
-        JTextField txtId    = new JTextField(10);
-        JTextField txtLast  = new JTextField(10);
-        JTextField txtFirst = new JTextField(10);
-        JTextField txtSSS   = new JTextField(10);
-        JTextField txtPH    = new JTextField(10);
-        JTextField txtTIN   = new JTextField(10);
-        JTextField txtPag   = new JTextField(10);
-        JTextField txtPos   = new JTextField(10);
-        JTextField txtSal   = new JTextField(10);
-        JTextField txtEmpT  = new JTextField(10);
-        JTextField txtUser  = new JTextField(10);
-        JPasswordField txtPass = new JPasswordField(10);
 
         String[] labels = {
-            "ID:","Last Name:","First Name:","SSS#:","PhilHealth#:",
-            "TIN:","Pag-IBIG#:","Position:","Salary:","Emp Type:",
-            "Username:","Password:"
+          "ID","Last Name","First Name","Position","Salary",
+          "Type","SSS#","PhilHealth#","TIN","Pag-IBIG#","Username","Password"
         };
-        JComponent[] fields = {
-            txtId, txtLast, txtFirst, txtSSS, txtPH,
-            txtTIN, txtPag, txtPos, txtSal, txtEmpT,
-            txtUser, txtPass
-        };
-
         for (int i=0; i<labels.length; i++) {
-            gbc.gridx=0; gbc.gridy=i; dlg.add(new JLabel(labels[i]), gbc);
-            gbc.gridx=1; dlg.add(fields[i], gbc);
+            gbc.gridx=0; gbc.gridy=i;
+            p.add(new JLabel(labels[i]+":"), gbc);
+            gbc.gridx=1;
+            if (i == labels.length-1) {
+                addPass = new JPasswordField(10);
+                p.add(addPass, gbc);
+            } else {
+                JTextField f = new JTextField(10);
+                p.add(f, gbc);
+                switch(i){
+                    case 0: addId       = f; break;
+                    case 1: addLast     = f; break;
+                    case 2: addFirst    = f; break;
+                    case 3: addPosition = f; break;
+                    case 4: addSalary   = f; break;
+                    case 5: addType     = f; break;
+                    case 6: addSSS      = f; break;
+                    case 7: addPH       = f; break;
+                    case 8: addTIN      = f; break;
+                    case 9: addPag      = f; break;
+                    case 10:addUser     = f; break;
+                }
+            }
         }
 
         gbc.gridx=0; gbc.gridy=labels.length; gbc.gridwidth=2;
-        JButton btnSubmit = new JButton("Submit");
-        dlg.add(btnSubmit, gbc);
-
-        btnSubmit.addActionListener(ae -> {
+        JButton sub = new JButton("Submit");
+        sub.addActionListener(e->{
             try {
-                Employee e = new Employee(
-                    Integer.parseInt(txtId.getText().trim()),
-                    txtLast.getText().trim(),
-                    txtFirst.getText().trim(),
-                    txtPos.getText().trim(),
-                    Double.parseDouble(txtSal.getText().trim()),
-                    txtEmpT.getText().trim(),
-                    txtSSS.getText().trim(),
-                    txtPH.getText().trim(),
-                    txtTIN.getText().trim(),
-                    txtPag.getText().trim(),
-                    new LoginSession(
-                        txtUser.getText().trim(),
-                        String.valueOf(new String(txtPass.getPassword()).hashCode())
-                    )
+                String pwHash = Integer.toString(
+                    new String(addPass.getPassword()).hashCode()
                 );
-                employees.add(e);
-                tableModel.addRow(new Object[]{
-                    e.getId(), e.getLastName(), e.getFirstName(),
-                    e.getSssNumber(), e.getPhilHealthNumber(),
-                    e.getTin(), e.getPagIbigNumber()
-                });
-                writeEmployeeToCSV(e, CSV_FILE);
-                dlg.dispose();
+                Employee emp = new Employee(
+                    Integer.parseInt(addId.getText().trim()),
+                    addLast.getText().trim(),
+                    addFirst.getText().trim(),
+                    addPosition.getText().trim(),
+                    Double.parseDouble(addSalary.getText().trim()),
+                    addType.getText().trim(),
+                    addSSS.getText().trim(),
+                    addPH.getText().trim(),
+                    addTIN.getText().trim(),
+                    addPag.getText().trim(),
+                    new LoginSession(addUser.getText().trim(), pwHash)
+                );
+                employees.add(emp);
+                saveEmployees();
+                reloadManageTable();
+                JOptionPane.showMessageDialog(this, "Employee added.");
             } catch(Exception ex) {
-                JOptionPane.showMessageDialog(dlg, "Invalid input: " + ex.getMessage());
+                JOptionPane.showMessageDialog(this,
+                    ex.getMessage(), "Add Failed",
+                    JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        p.add(sub, gbc);
+
+        gbc.gridy++;
+        JButton back = new JButton("Back");
+        back.addActionListener(e->cardLayout.show(cards,CARD_WELCOME));
+        p.add(back, gbc);
+
+        return p;
+    }
+
+    private JPanel makeManagePanel() {
+        JPanel p = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5,5,5,5);
+
+        String[] cols = {
+          "ID","Last","First","Position","Salary",
+          "Type","SSS","Phil","TIN","Pag","User"
+        };
+        manageModel = new DefaultTableModel(cols, 0);
+        manageTable = new JTable(manageModel);
+        manageTable.setSelectionMode(
+            ListSelectionModel.SINGLE_SELECTION
+        );
+        manageTable.getSelectionModel().addListSelectionListener(e->{
+            if (!manageTable.getSelectionModel().getValueIsAdjusting()) {
+                int r = manageTable.getSelectedRow();
+                if (r >= 0) {
+                    Employee em = employees.get(r);
+                    mLast     .setText(em.getLastName());
+                    mFirst    .setText(em.getFirstName());
+                    mPosition .setText(em.getPosition());
+                    mSalary   .setText(String.valueOf(em.getSalary()));
+                    mType     .setText(em.getEmploymentType());
+                    mSSS      .setText(em.getSssNumber());
+                    lblPHVal  .setText(em.getPhilHealthNumber());
+                    mTIN      .setText(em.getTin());
+                    mPag      .setText(em.getPagIbigNumber());
+                    mUser     .setText(em.getLogin().getUsername());
+                    btnUpdate .setEnabled(true);
+                    btnDelete .setEnabled(true);
+                }
             }
         });
 
-        dlg.setLocationRelativeTo(this);
-        dlg.setVisible(true);
+        gbc.gridx=0; gbc.gridy=0; gbc.gridwidth=4;
+        gbc.fill=GridBagConstraints.BOTH;
+        gbc.weightx=1; gbc.weighty=0.5;
+        p.add(new JScrollPane(manageTable), gbc);
+
+        // detail fields
+        gbc.fill=GridBagConstraints.NONE;
+        gbc.weightx=0; gbc.weighty=0;
+        gbc.gridwidth=1;
+        String[] labels = {
+            "Last","First","Position","Salary","Type",
+            "SSS#","PhilHealth#","TIN","Pag-IBIG#","Username"
+        };
+        JTextField[] fields = new JTextField[labels.length];
+        for (int i=0; i<labels.length; i++) {
+            fields[i] = new JTextField(10);
+            gbc.gridx=0; gbc.gridy=i+1;
+            p.add(new JLabel(labels[i]+":"), gbc);
+            gbc.gridx=1; p.add(fields[i], gbc);
+        }
+        mLast     = fields[0];
+        mFirst    = fields[1];
+        mPosition = fields[2];
+        mSalary   = fields[3];
+        mType     = fields[4];
+        mSSS      = fields[5];
+        lblPHVal  = new JLabel();     // use a JLabel for PhilHealth field
+        fields[6] = null;              // not used
+        gbc.gridx=1; gbc.gridy=6;
+        p.add(lblPHVal, gbc);
+        mTIN      = fields[7];
+        mPag      = fields[8];
+        mUser     = fields[9];
+
+        btnUpdate = new JButton("Update");
+        btnUpdate.setEnabled(false);
+        btnUpdate.addActionListener(e->handleUpdate());
+        btnDelete = new JButton("Delete");
+        btnDelete.setEnabled(false);
+        btnDelete.addActionListener(e->handleDelete());
+
+        gbc.gridx=2; gbc.gridy=1;
+        p.add(btnUpdate, gbc);
+        gbc.gridx=3;
+        p.add(btnDelete, gbc);
+
+        // Back button (using fields.length, not a nonexistent tflds)
+        gbc.gridx     = 0;
+        gbc.gridy     = labels.length + 1;
+        gbc.gridwidth = 4;
+        JButton back = new JButton("Back");
+        back.addActionListener(e->cardLayout.show(cards, CARD_WELCOME));
+        p.add(back, gbc);
+
+        reloadManageTable();
+        return p;
     }
 
-    private List<Employee> readEmployeesFromCSV(String file) {
+    private JPanel makePayrollPanel() {
+        JPanel p = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(4,6,4,6);
+        gbc.anchor = GridBagConstraints.WEST;
+
+        String[] labs = {
+          "Name:","Position:","Salary:",
+          "SSS:","PhilHealth:","Pag-IBIG:",
+          "Tax:","Other:","Total Deduct:","Net Pay:"
+        };
+        JLabel[] vals = new JLabel[labs.length];
+        for (int i=0; i<labs.length; i++) {
+            gbc.gridx=0; gbc.gridy=i;
+            p.add(new JLabel(labs[i]), gbc);
+            vals[i] = new JLabel("-");
+            gbc.gridx=1; p.add(vals[i], gbc);
+        }
+        lblName        = vals[0];
+        lblPositionVal = vals[1];
+        lblSalaryVal   = vals[2];
+        lblSSS         = vals[3];
+        lblPHVal       = vals[4];
+        lblPagVal      = vals[5];
+        lblTax         = vals[6];
+        lblOther       = vals[7];
+        lblDeduct      = vals[8];
+        lblNet         = vals[9];
+
+        gbc.gridx=0; gbc.gridy=labs.length; gbc.gridwidth=2; 
+        JButton toAtt = new JButton("Go to Attendance");
+        toAtt.addActionListener(e->cardLayout.show(cards, CARD_ATTENDANCE));
+        p.add(toAtt, gbc);
+
+        gbc.gridy++;
+        JButton logout = new JButton("Log Out");
+        logout.addActionListener(e->cardLayout.show(cards, CARD_WELCOME));
+        p.add(logout, gbc);
+
+        return p;
+    }
+
+    private JPanel makeAttendancePanel() {
+        JPanel p = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5,5,5,5);
+
+        gbc.gridx=0; gbc.gridy=0; p.add(new JLabel("Time In (HH:MM):"), gbc);
+        gbc.gridx=1; timeInField = new JTextField(10); p.add(timeInField, gbc);
+
+        gbc.gridx=0; gbc.gridy=1; p.add(new JLabel("Time Out (HH:MM):"), gbc);
+        gbc.gridx=1; timeOutField = new JTextField(10); p.add(timeOutField, gbc);
+
+        gbc.gridx=0; gbc.gridy=2; gbc.gridwidth=2;
+        JButton calc = new JButton("Compute Hours");
+        calc.addActionListener(e->{
+            try {
+                Attendance att = new Attendance(
+                    LocalTime.parse(timeInField.getText().trim()),
+                    LocalTime.parse(timeOutField.getText().trim())
+                );
+                JOptionPane.showMessageDialog(this,
+                  "Hours worked: " + att.calculateWorkedHours());
+            } catch(Exception ex) {
+                JOptionPane.showMessageDialog(this,
+                  "Invalid format: HH:MM", "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        p.add(calc, gbc);
+
+        gbc.gridy++;
+        JButton back = new JButton("Back to Payroll");
+        back.addActionListener(e->cardLayout.show(cards, CARD_PAYROLL));
+        p.add(back, gbc);
+
+        return p;
+    }
+
+    // ==================  Helpers  ==================
+
+    private void populatePayroll(Employee e) {
+        Payroll pr = new Payroll(e);
+        pr.computePayroll();
+        NumberFormat cf = NumberFormat.getCurrencyInstance(Locale.getDefault());
+
+        lblName       .setText(e.getName());
+        lblPositionVal.setText(e.getPosition());
+        lblSalaryVal  .setText(cf.format(e.getSalary()));
+        lblSSS        .setText(cf.format(pr.getSSS()));
+        lblPHVal      .setText(cf.format(pr.getPhilHealth()));
+        lblPagVal     .setText(cf.format(pr.getPagIbig()));
+        lblTax        .setText(cf.format(pr.getTax()));
+        lblOther      .setText(cf.format(pr.getOther()));
+        lblDeduct     .setText(cf.format(pr.getDeductions()));
+        lblNet        .setText(cf.format(pr.getNetPay()));
+    }
+
+    private void handleUpdate() {
+        int r = manageTable.getSelectedRow();
+        if (r < 0) return;
+        try {
+            Employee e = employees.get(r);
+            e.setLastName(mLast.getText().trim());
+            e.setFirstName(mFirst.getText().trim());
+            e.setPosition(mPosition.getText().trim());
+            e.setSalary(Double.parseDouble(mSalary.getText().trim()));
+            e.setEmploymentType(mType.getText().trim());
+            e.setSssNumber(mSSS.getText().trim());
+            e.setPhilHealthNumber(lblPHVal.getText().trim());
+            e.setTin(mTIN.getText().trim());
+            e.setPagIbigNumber(mPag.getText().trim());
+            e.getLogin().setUsername(mUser.getText().trim());
+
+            saveEmployees();
+            reloadManageTable();
+            JOptionPane.showMessageDialog(this, "Record updated.");
+        } catch(Exception ex) {
+            JOptionPane.showMessageDialog(this,
+              ex.getMessage(), "Update Failed", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void handleDelete() {
+        int r = manageTable.getSelectedRow();
+        if (r < 0) return;
+        if (JOptionPane.showConfirmDialog(this,
+            "Delete this record?", "Confirm", JOptionPane.YES_NO_OPTION)
+            == JOptionPane.YES_OPTION) {
+            employees.remove(r);
+            saveEmployees();
+            reloadManageTable();
+            JOptionPane.showMessageDialog(this, "Record deleted.");
+        }
+    }
+
+    private void reloadManageTable() {
+        manageModel.setRowCount(0);
+        for (Employee e : employees) {
+            manageModel.addRow(new Object[]{
+                e.getId(),
+                e.getLastName(),
+                e.getFirstName(),
+                e.getPosition(),
+                e.getSalary(),
+                e.getEmploymentType(),
+                e.getSssNumber(),
+                e.getPhilHealthNumber(),
+                e.getTin(),
+                e.getPagIbigNumber(),
+                e.getLogin().getUsername()
+            });
+        }
+    }
+
+    private List<Employee> loadEmployees() {
         List<Employee> list = new ArrayList<>();
-        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+        try (BufferedReader br = new BufferedReader(new FileReader(CSV_FILE))) {
             String line;
             while ((line = br.readLine()) != null) {
-                String[] tok = line.split(",");
-                if (tok.length < 11) continue;
-                Employee e = new Employee(
-                    Integer.parseInt(tok[0].trim()),
-                    tok[1].trim(),
-                    tok[2].trim(),
-                    tok[8].trim(),
-                    Double.parseDouble(tok[7].trim()),
-                    tok[9].trim(),
-                    tok[3].trim(),
-                    tok[4].trim(),
-                    tok[5].trim(),
-                    tok[6].trim(),
-                    new LoginSession(tok[9].trim(), tok[10].trim())
-                );
-                list.add(e);
+                String[] t = line.split(",", -1);
+                if (t.length < 12) continue;
+                list.add(new Employee(
+                    Integer.parseInt(t[0].trim()),
+                    t[1].trim(), t[2].trim(), t[3].trim(),
+                    Double.parseDouble(t[4].trim()), t[5].trim(),
+                    t[6].trim(), t[7].trim(), t[8].trim(), t[9].trim(),
+                    new LoginSession(t[10].trim(), t[11].trim())
+                ));
             }
         } catch (IOException ignored) {}
         return list;
     }
 
-    private void writeEmployeeToCSV(Employee e, String file) {
-        try (PrintWriter pw = new PrintWriter(new FileWriter(file, true))) {
-            pw.printf(
-                "%d,%s,%s,%s,%s,%s,%s,%.2f,%s,%s,%s%n",
-                e.getId(),
-                e.getLastName(), e.getFirstName(),
-                e.getSssNumber(), e.getPhilHealthNumber(),
-                e.getTin(), e.getPagIbigNumber(),
-                e.getSalary(), e.getEmploymentType(),
-                e.getLogin().getUsername(), e.getLogin().getPasswordHash()
-            );
-        } catch (IOException ex) {
-            JOptionPane.showMessageDialog(this, "Error saving to CSV: " + ex.getMessage());
-        }
-    }
-
-    private void createLoginTab() {
-        loginPanel = new JPanel(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        JLabel lblUsername = new JLabel("Username:");
-        JLabel lblPassword = new JLabel("Password:");
-        txtUsername = new JTextField(15);
-        txtPassword = new JPasswordField(15);
-        JButton btnLogin = new JButton("Login");
-        btnLogin.addActionListener(e -> handleLogin());
-
-        gbc.insets = new Insets(5,5,5,5);
-        gbc.gridx=0; gbc.gridy=0; loginPanel.add(lblUsername, gbc);
-        gbc.gridx=1;                loginPanel.add(txtUsername, gbc);
-        gbc.gridx=0; gbc.gridy=1; loginPanel.add(lblPassword, gbc);
-        gbc.gridx=1;                loginPanel.add(txtPassword, gbc);
-        gbc.gridx=0; gbc.gridy=2; gbc.gridwidth=2; loginPanel.add(btnLogin, gbc);
-
-        tabbedPane.addTab("Login", loginPanel);
-    }
-
-    private void createPayrollTab() {
-        payrollPanel = new JPanel(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(4,6,4,6);
-        gbc.anchor = GridBagConstraints.WEST;
-
-        String[] labels = {
-            "Name:", "Position:", "Salary:", "SSS:", "PhilHealth:",
-            "Pag-IBIG:", "Tax:", "Other:", "Total Deductions:", "Net Pay:"
-        };
-        JLabel[] values = new JLabel[labels.length];
-        for (int i=0; i<labels.length; i++) {
-            gbc.gridx=0; gbc.gridy=i; payrollPanel.add(new JLabel(labels[i]), gbc);
-            values[i] = new JLabel("-");
-            gbc.gridx=1; payrollPanel.add(values[i], gbc);
-        }
-
-        lblNameVal      = values[0];
-        lblPosVal       = values[1];
-        lblSalaryVal    = values[2];
-        lblSSSVal       = values[3];
-        lblPhilHealthVal= values[4];
-        lblPagIbigVal   = values[5];
-        lblTaxVal       = values[6];
-        lblOtherVal     = values[7];
-        lblTotalVal     = values[8];
-        lblNetVal       = values[9];
-
-        tabbedPane.addTab("Payroll Info", payrollPanel);
-    }
-
-    private void createAttendanceTab() {
-        attendancePanel = new JPanel(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-
-        JLabel lblIn  = new JLabel("Time In (HH:MM):");
-        JLabel lblOut = new JLabel("Time Out (HH:MM):");
-        txtTimeIn  = new JTextField(10);
-        txtTimeOut = new JTextField(10);
-        JButton btnCalc = new JButton("Compute Hours");
-        btnCalc.addActionListener(e -> handleAttendance());
-
-        gbc.insets = new Insets(5,5,5,5);
-        gbc.gridx=0; gbc.gridy=0; attendancePanel.add(lblIn, gbc);
-        gbc.gridx=1;            attendancePanel.add(txtTimeIn, gbc);
-        gbc.gridx=0; gbc.gridy=1; attendancePanel.add(lblOut, gbc);
-        gbc.gridx=1;            attendancePanel.add(txtTimeOut, gbc);
-        gbc.gridx=0; gbc.gridy=2; gbc.gridwidth=2; attendancePanel.add(btnCalc, gbc);
-
-        tabbedPane.addTab("Attendance", attendancePanel);
-    }
-
-    private void handleLogin() {
-        try {
-            String username = txtUsername.getText().trim();
-            String password = new String(txtPassword.getPassword()).trim();
-            if (username.isEmpty() || password.isEmpty())
-                throw new IllegalArgumentException("Fields cannot be empty.");
-
-            for (Employee emp : employees) {
-                if (emp.getLogin().getUsername().equals(username)
-                 && emp.getLogin().authenticate(password)) {
-                    currentUser = emp;
-                    Payroll payroll = new Payroll(emp);
-                    payroll.computePayroll();
-
-                    NumberFormat cur = NumberFormat.getCurrencyInstance(new Locale("en","PH"));
-                    lblNameVal.setText(emp.getName());
-                    lblPosVal.setText(emp.getPosition());
-                    lblSalaryVal.setText(cur.format(emp.getSalary()));
-                    lblSSSVal.setText(cur.format(payroll.getSSS()));
-                    lblPhilHealthVal.setText(cur.format(payroll.getPhilHealth()));
-                    lblPagIbigVal.setText(cur.format(payroll.getPagIbig()));
-                    lblTaxVal.setText(cur.format(payroll.getTax()));
-                    lblOtherVal.setText(cur.format(payroll.getOther()));
-                    lblTotalVal.setText(cur.format(payroll.getDeductions()));
-                    lblNetVal.setText(cur.format(payroll.getNetPay()));
-
-                    // unlock all other tabs
-                    tabbedPane.setEnabledAt(0, true);
-                    tabbedPane.setEnabledAt(2, true);
-                    tabbedPane.setEnabledAt(3, true);
-                    tabbedPane.setSelectedIndex(2);
-                    return;
-                }
+    private void saveEmployees() {
+        try (PrintWriter pw = new PrintWriter(new FileWriter(CSV_FILE))) {
+            for (Employee e : employees) {
+                pw.printf(
+                  "%d,%s,%s,%s,%.2f,%s,%s,%s,%s,%s,%s,%s%n",
+                  e.getId(),
+                  e.getLastName(),
+                  e.getFirstName(),
+                  e.getPosition(),
+                  e.getSalary(),
+                  e.getEmploymentType(),
+                  e.getSssNumber(),
+                  e.getPhilHealthNumber(),
+                  e.getTin(),
+                  e.getPagIbigNumber(),
+                  e.getLogin().getUsername(),
+                  e.getLogin().getPasswordHash()
+                );
             }
-            throw new Exception("Invalid login.");
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, e.getMessage(), "Login Error", JOptionPane.ERROR_MESSAGE);
-        }
-    }
-
-    private void handleAttendance() {
-        try {
-            LocalTime in  = LocalTime.parse(txtTimeIn.getText());
-            LocalTime out = LocalTime.parse(txtTimeOut.getText());
-            Attendance att = new Attendance(1, "Today", in, out);
-            double hours = att.calculateWorkedHours();
-            JOptionPane.showMessageDialog(this, "Hours Worked: " + hours);
-        } catch (Exception e) {
+        } catch (IOException ex) {
             JOptionPane.showMessageDialog(this,
-                "Invalid time format. Use HH:MM.",
-                "Time Format Error",
-                JOptionPane.ERROR_MESSAGE);
+              ex.getMessage(), "Save Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new MotorPHUI());
+        SwingUtilities.invokeLater(MotorPHUI::new);
     }
 }
